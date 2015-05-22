@@ -1,0 +1,139 @@
+---
+title: "Machine Learning Project"
+author: "PdN"
+date: "Friday, May 22, 2015"
+output: html_document
+---
+
+
+# Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about
+personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of
+enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior,
+or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do,
+but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the 
+belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly
+in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har
+(see the section on the Weight Lifting Exercise Dataset). 
+
+
+## Setting environment
+
+```{r}
+rm(list = ls())
+
+# Libraries
+
+library(ggplot2)
+library(caret)
+```
+
+## Getting data from the net 
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har.
+
+```{r}
+# The training data for this project are available here: 
+    
+training_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+training_local <- "pml-training.csv"
+
+# The test data are available here: 
+
+testing_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+testing_local <- "pml-testing.csv"
+
+if (!file.exists(training_local)) {
+    download.file(training_url, 
+                  destfile = training_local)
+}
+
+if (!file.exists(testing_local)) {
+    download.file(testing_url, 
+                  destfile = testing_local)
+}
+
+# Reading training and testing files
+
+testing  <- read.csv(testing_local, header=TRUE, sep= ",",na.strings=c("NA","", "#DIV/0!"))
+training <- read.csv(training_local, header=TRUE, sep= ",",na.strings=c("NA","", "#DIV/0!"))
+```
+
+
+
+## Some data cleaning and preparation
+
+```{r}
+# By looking at the variables, we can assume that user_name, the various timestamps and *_window can be removed
+testing <- testing[, -c(1:7)]
+training <- training[, -c(1:7)]
+
+# Other data cleaning
+# There are many NAs, we can remove the variables with too many NAs, as they cannot contribute to the prediction
+plot(colSums(is.na(training)))
+# We remove variables that has more than 90% NAs
+col2remove <- which(as.numeric(colSums(is.na(training))) > 0.9*nrow(training))
+training <- training[, - col2remove]
+# Using the exact same criteria (based on training) for testing
+testing <- testing[, - col2remove]
+```
+
+Partitioning the supplied training data into training and validation (testing data being already provided)
+
+```{r}
+set.seed(1962)
+in_train <- createDataPartition(training$classe, p=0.70, list=FALSE)
+training <- training[in_train,]
+validation <- training[-in_train,]
+```
+
+Reducing the number of variables using PCA
+
+```{r}
+training_pca=preProcess(training[,-53],method="pca",na.remove = TRUE, thresh=.99)
+pca_training=predict(training_pca,training[,-53])
+
+pca_validation=predict(training_pca,validation[,-53])
+```
+
+The number of variables reduces to `r ncol(pca_training) `
+
+With the reduced set of variables a model is derived, using random forest algorithm
+
+```{r, cache = TRUE}
+if (!exists("rfFit")) {
+rfFit <- train(training$classe ~ ., method = "rf", data = pca_training)
+}
+```
+
+## Cross validation with the validation subset
+
+```{r}
+xvalid <- confusionMatrix(validation$classe, predict(rfFit, pca_validation))
+```
+
+Summary of the accuracy of the mode
+```{r}
+print(xvalid)
+```
+
+## Final test with the provided test set
+
+```{r}
+pca_testing=predict(training_pca,testing[,-53])
+test_result <- predict(rfFit, pca_testing)
+```
+
+Vector submitted for grading (20/20)
+```{r}
+print(test_result)
+```
+
+## Reference
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H.
+Qualitative Activity Recognition of Weight Lifting Exercises.
+Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+ 
